@@ -1,7 +1,7 @@
 ---
 name: binance-futures
 description: Interact with Binance Futures API — account data, positions, orders, WebSocket streams, funding rates, liquidations, and advanced order types. Production-grade with v3 endpoints, rate limiting, and proper secret management.
-metadata: {"nanobot":{"emoji":"💹","requires":{"bins":["curl","python3","jq"],"libs":["python-binance","ccxt","python-dotenv"]}}}
+metadata: {"nanobot":{"emoji":"💹","requires":{"bins":["curl","python3"],"libs":[]}}}
 ---
 
 # Binance Futures Skill 💹
@@ -90,15 +90,63 @@ def load_binance_credentials():
 ## Prerequisites
 
 ```bash
-# Install Python SDK (recommended over raw curl)
+# bf.py uses pure Python stdlib — zero pip installs needed
+# Optional (only if using SDK-based Python scripts separately):
 pip install python-binance ccxt python-dotenv
-
-# Install jq for shell scripts
-sudo apt-get install jq   # Ubuntu/Debian
-brew install jq           # macOS
 ```
 
----
+
+## 🚀 Quick Start — `bf.py` CLI
+
+`scripts/bf.py` is the **unified data tool** — replaces all individual shell scripts.
+Pure Python stdlib, zero dependencies, auto-loads credentials from `~/.binance_config`.
+
+```bash
+# Make executable once
+chmod +x skills/binance-futures/scripts/bf.py
+
+# Account summary (v3)
+./bf.py account
+
+# Quick balance
+./bf.py balance
+
+# Open positions (v3 — returns only active positions, not all 300 symbols)
+./bf.py positions
+
+# Income + PnL — last 90 days (auto-paginated)
+./bf.py income
+
+# Income — full year
+./bf.py income --days 365
+
+# Income — filter by symbol and type
+./bf.py income --symbol BTCUSDT --type REALIZED_PNL
+
+# Trade history — last 30 days
+./bf.py trades
+
+# Trade history — specific symbol
+./bf.py trades --symbol ETHUSDT --days 90
+
+# Raw JSON output (pipe to jq)
+./bf.py positions --raw | jq '.[0]'
+
+# Risk:Reward calculator (no API key needed)
+./bf.py rr 50000 48000
+./bf.py rr 50000 48000 --balance 1000 --risk 2 --leverage 10
+./bf.py rr 0.50 0.46 --target 2.5
+```
+
+| Command | v3 Endpoint | Description |
+|---------|-------------|-------------|
+| `account` | `/fapi/v3/account` | Full account summary with margin usage |
+| `balance` | `/fapi/v3/balance` | Quick wallet + available balance |
+| `positions` | `/fapi/v3/positionRisk` | Active positions only (efficient) |
+| `income` | `/fapi/v1/income` | Paginated income/PnL history |
+| `trades` | `/fapi/v1/userTrades` | Historical trade records |
+| `rr` | — | R:R calculator, position sizing, TP levels |
+
 
 ## Recommended: Python SDK (over raw curl)
 
