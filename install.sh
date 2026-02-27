@@ -101,6 +101,15 @@ echo -e "${BOLD}║${NC}  dst: ${CYAN}$SKILLS_DST${NC}"
 echo -e "${BOLD}╚═══════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
+# ── Interaction guard ───────────────────────────────────────────────────────────────
+if [[ "$INSTALL_ALL" == false && ! -t 0 ]]; then
+  echo -e "  ${YEL}No interactive terminal detected.${NC}"
+  echo -e "  ${DIM}Run with ${NC}${BOLD}--all${NC}${DIM} to install all skills without prompting.${NC}"
+  echo -e "  ${DIM}  ./install.sh --all${NC}"
+  echo ""
+  exit 1
+fi
+
 # ── Select skills ───────────────────────────────────────────────────────────────────────
 selected=()
 
