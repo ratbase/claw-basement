@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh — Install personal claw skills to ~/.claude/skills/
+# install.sh — Install personal claw skills to detected destination
 #
 # Usage:
 #   ./install.sh              Interactive selection (fzf if available, else menu)
@@ -11,7 +11,9 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILLS_SRC="$REPO_DIR/skills"
-SKILLS_DST="${SKILLS_DST:-$HOME/.claude/skills}"
+_CLAUDE_DST="$HOME/.claude/skills"
+_PICO_DST="$HOME/.picoclaw/workspace/skills"
+SKILLS_DST="${SKILLS_DST:-}"
 DRY_RUN=false
 INSTALL_ALL=false
 
@@ -41,6 +43,32 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 DIM='\033[2m'
 NC='\033[0m'
+
+# ── Detect destination ────────────────────────────────────────────────────────
+if [[ -z "$SKILLS_DST" ]]; then
+  _dsts=() _dlabels=()
+  [[ -d "$_CLAUDE_DST" ]] && { _dsts+=("$_CLAUDE_DST"); _dlabels+=("~/.claude/skills               (opencode / claude)"); }
+  [[ -d "$_PICO_DST" ]]   && { _dsts+=("$_PICO_DST");   _dlabels+=("~/.picoclaw/workspace/skills   (picoclaw)"); }
+
+  if [[ ${#_dsts[@]} -eq 0 ]]; then
+    SKILLS_DST="$_CLAUDE_DST"   # default — created at install time
+  elif [[ ${#_dsts[@]} -eq 1 ]]; then
+    SKILLS_DST="${_dsts[0]}"
+  else
+    echo ""
+    echo -e "  ${BOLD}Multiple destinations detected — choose one:${NC}"
+    for _i in "${!_dsts[@]}"; do
+      echo -e "  ${CYAN}$((_i+1)))${NC}  ${_dlabels[$_i]}"
+    done
+    echo ""
+    printf "  › [1]: "
+    read -r _choice
+    _idx=$(( ${_choice:-1} - 1 ))
+    [[ $_idx -ge 0 && $_idx -lt ${#_dsts[@]} ]] && SKILLS_DST="${_dsts[$_idx]}" || SKILLS_DST="${_dsts[0]}"
+    unset _choice _idx
+  fi
+  unset _dsts _dlabels _i
+fi
 
 # ── Discover skills ───────────────────────────────────────────────────────────
 skill_names=()
