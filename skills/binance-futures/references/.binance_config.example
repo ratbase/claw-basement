@@ -1,0 +1,13 @@
+# Binance API Credentials Template
+# Copy this file to ~/.binance_config and fill in your real values
+# NEVER commit the real ~/.binance_config to version control!
+#
+# Permissions needed:
+#   - Futures Trading: YES
+#   - Spot Trading: NO (not needed)
+#   - Margin Trading: NO (not needed)  
+#   - Withdrawals: NO (NEVER enable for trading bots)
+#   - IP Restriction: Whitelist your IP
+
+BINANCE_API_KEY=your_api_key_here
+BINANCE_API_SECRET=your_api_secret_here

@@ -1,0 +1,17 @@
+# Credential files - NEVER commit real secrets
+.binance_config
+.env
+*.env
+credentials
+secrets
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
