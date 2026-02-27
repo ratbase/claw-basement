@@ -80,13 +80,36 @@ echo -e "${BOLD}║${NC}  target: ${CYAN}$SKILLS_DST${NC}"
 echo -e "${BOLD}╚═══════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
-# ── Select ────────────────────────────────────────────────────────────────────
+# ── Select ────────────────────────────────────────────────────────────────────────────
 selected=()
+
+_menu_remove() {
+  echo -e "  ${BOLD}Installed Skills (from this repo)${NC}\n"
+  local i
+  for i in "${!installed[@]}"; do
+    printf "  ${CYAN}%2d)${NC}  ${BOLD}%s${NC}\n" "$((i+1))" "${installed[$i]}"
+  done
+  echo ""
+  echo -e "  ${YEL}Enter numbers to remove (e.g. 1 3), or 'all':${NC}"
+  printf "  › "
+  read -r _minput
+  if [[ "$_minput" == "all" ]]; then
+    selected=("${installed[@]}")
+  else
+    local token
+    for token in $_minput; do
+      if [[ "$token" =~ ^[0-9]+$ ]]; then
+        local _idx=$((token - 1))
+        [[ $_idx -ge 0 && $_idx -lt ${#installed[@]} ]] && selected+=("${installed[$_idx]}")
+      fi
+    done
+  fi
+}
 
 if [[ "$REMOVE_ALL" == true ]]; then
   selected=("${installed[@]}")
 
-elif command -v fzf &>/dev/null; then
+elif command -v fzf &>/dev/null && [[ -t 0 && -t 1 ]]; then
   mapfile -t selected < <(
     printf '%s\n' "${installed[@]}" | \
     fzf \
@@ -98,31 +121,19 @@ elif command -v fzf &>/dev/null; then
       --height="70%" \
       --border="rounded" \
       --color="header:italic,border:red,prompt:bright-red,pointer:bright-red" \
-      --bind="ctrl-a:select-all" \
+      --bind="ctrl-a:select-all,enter:select+accept" \
       --marker="✓" \
       2>/dev/null
   ) || true
 
-else
-  echo -e "  ${BOLD}Installed Skills (from this repo)${NC}\n"
-  for i in "${!installed[@]}"; do
-    printf "  ${CYAN}%2d)${NC}  ${BOLD}%s${NC}\n" "$((i+1))" "${installed[$i]}"
-  done
-  echo ""
-  echo -e "  ${YEL}Enter numbers to remove (e.g. 1 3), or 'all':${NC}"
-  printf "  › "
-  read -r input
-
-  if [[ "$input" == "all" ]]; then
-    selected=("${installed[@]}")
-  else
-    for token in $input; do
-      if [[ "$token" =~ ^[0-9]+$ ]]; then
-        idx=$((token - 1))
-        [[ $idx -ge 0 && $idx -lt ${#installed[@]} ]] && selected+=("${installed[$idx]}")
-      fi
-    done
+  # fzf dismissed (Escape/Ctrl-C) — fall back to numbered menu
+  if [[ ${#selected[@]} -eq 0 ]]; then
+    echo -e "  ${YEL}↩  fzf closed — using numbered menu:${NC}\n"
+    _menu_remove
   fi
+
+else
+  _menu_remove
 fi
 
 if [[ ${#selected[@]} -eq 0 ]]; then

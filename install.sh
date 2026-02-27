@@ -101,13 +101,45 @@ echo -e "${BOLD}║${NC}  dst: ${CYAN}$SKILLS_DST${NC}"
 echo -e "${BOLD}╚═══════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
-# ── Select skills ─────────────────────────────────────────────────────────────
+# ── Select skills ───────────────────────────────────────────────────────────────────────
 selected=()
+
+_menu_select() {
+  echo -e "  ${BOLD}Available Skills${NC}\n"
+  local i
+  for i in "${!skill_names[@]}"; do
+    local _inst=""
+    [[ -d "$SKILLS_DST/${skill_names[$i]}" ]] && _inst=" ${YEL}(installed)${NC}"
+    printf "  ${CYAN}%2d)${NC}  ${BOLD}%-28s${NC}  ${DIM}%s${NC}%b\n" \
+      "$((i+1))" "${skill_names[$i]}" "${skill_descs[$i]}" "$_inst"
+  done
+  echo ""
+  echo -e "  ${YEL}Enter numbers (e.g. 1 3 5), ranges (1-3), or 'all':${NC}"
+  printf "  › "
+  read -r _minput
+  if [[ "$_minput" == "all" ]]; then
+    selected=("${skill_names[@]}")
+  else
+    local token
+    for token in $_minput; do
+      if [[ "$token" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+        local n
+        for ((n=${BASH_REMATCH[1]}; n<=${BASH_REMATCH[2]}; n++)); do
+          local _idx=$((n - 1))
+          [[ $_idx -ge 0 && $_idx -lt ${#skill_names[@]} ]] && selected+=("${skill_names[$_idx]}")
+        done
+      elif [[ "$token" =~ ^[0-9]+$ ]]; then
+        local _idx=$((token - 1))
+        [[ $_idx -ge 0 && $_idx -lt ${#skill_names[@]} ]] && selected+=("${skill_names[$_idx]}")
+      fi
+    done
+  fi
+}
 
 if [[ "$INSTALL_ALL" == true ]]; then
   selected=("${skill_names[@]}")
 
-elif command -v fzf &>/dev/null; then
+elif command -v fzf &>/dev/null && [[ -t 0 && -t 1 ]]; then
   # fzf multi-select with SKILL.md preview
   mapfile -t selected < <(
     printf '%s\n' "${skill_names[@]}" | \
@@ -120,41 +152,19 @@ elif command -v fzf &>/dev/null; then
       --height="80%" \
       --border="rounded" \
       --color="header:italic,border:cyan,prompt:bright-cyan,pointer:bright-green" \
-      --bind="ctrl-a:select-all" \
+      --bind="ctrl-a:select-all,enter:select+accept" \
       --marker="✓" \
       2>/dev/null
   ) || true
 
-else
-  # Fallback: numbered checkbox menu
-  echo -e "  ${BOLD}Available Skills${NC}\n"
-  for i in "${!skill_names[@]}"; do
-    installed=""
-    [[ -d "$SKILLS_DST/${skill_names[$i]}" ]] && installed=" ${YEL}(installed)${NC}"
-    printf "  ${CYAN}%2d)${NC}  ${BOLD}%-28s${NC}  ${DIM}%s${NC}%b\n" \
-      "$((i+1))" "${skill_names[$i]}" "${skill_descs[$i]}" "$installed"
-  done
-  echo ""
-  echo -e "  ${YEL}Enter numbers (e.g. 1 3 5), ranges (1-3), or 'all':${NC}"
-  printf "  › "
-  read -r input
-
-  if [[ "$input" == "all" ]]; then
-    selected=("${skill_names[@]}")
-  else
-    # Support ranges like 1-3 and individual numbers
-    for token in $input; do
-      if [[ "$token" =~ ^([0-9]+)-([0-9]+)$ ]]; then
-        for ((n=${BASH_REMATCH[1]}; n<=${BASH_REMATCH[2]}; n++)); do
-          idx=$((n - 1))
-          [[ $idx -ge 0 && $idx -lt ${#skill_names[@]} ]] && selected+=("${skill_names[$idx]}")
-        done
-      elif [[ "$token" =~ ^[0-9]+$ ]]; then
-        idx=$((token - 1))
-        [[ $idx -ge 0 && $idx -lt ${#skill_names[@]} ]] && selected+=("${skill_names[$idx]}")
-      fi
-    done
+  # fzf dismissed (Escape/Ctrl-C) — fall back to numbered menu
+  if [[ ${#selected[@]} -eq 0 ]]; then
+    echo -e "  ${YEL}↩  fzf closed — using numbered menu:${NC}\n"
+    _menu_select
   fi
+
+else
+  _menu_select
 fi
 
 # ── Nothing selected ──────────────────────────────────────────────────────────
