@@ -65,7 +65,7 @@ elif command -v fzf &>/dev/null; then
       --multi \
       --prompt="  Remove › " \
       --header="TAB=select  ENTER=confirm  CTRL-A=all" \
-      --preview="ls -la '$SKILLS_DST/{}/' 2>/dev/null | head -30" \
+      --preview="bash -c 'ls -la \"$SKILLS_DST/{}/\" 2>/dev/null | head -30 || echo Not installed' " \
       --preview-window="right:50%:wrap" \
       --height="70%" \
       --border="rounded" \

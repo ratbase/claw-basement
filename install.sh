@@ -87,10 +87,7 @@ elif command -v fzf &>/dev/null; then
       --multi \
       --prompt="  Skills › " \
       --header="TAB=select  ENTER=confirm  CTRL-A=all  ·  src→dst" \
-      --preview="
-        f='$SKILLS_SRC/{}/SKILL.md'
-        [[ -f \"\$f\" ]] && head -50 \"\$f\" || echo 'No SKILL.md found'
-      " \
+      --preview="bash -c 'head -50 \"$SKILLS_SRC/{}/SKILL.md\" 2>/dev/null || echo No SKILL.md' " \
       --preview-window="right:55%:wrap" \
       --height="80%" \
       --border="rounded" \
