@@ -65,14 +65,27 @@ bf.py positions          →   "Should I add here?"   →   behavioral_analytics
 
 ```
 personal-claw-skills/
-├── install.sh                  Interactive rsync installer
-├── uninstall.sh                Interactive skill remover
-└── skills/
-    ├── binance-futures/        Futures API + bf.py CLI
-    ├── crypto-quant-trader/    Quant analysis & strategy
-    ├── trading-journal/        Performance analytics
-    ├── github/                 GitHub CLI wrapper
-    ├── tmux/                   tmux session control
-    ├── skill-creator/          Skill authoring helper
-    └── summarize/              URL/video summarizer
+├── install.sh                  Numbered-menu rsync installer
+├── uninstall.sh                Skill remover
+├── skills/                     Installs to ~/.claude/skills/ or ~/.picoclaw/workspace/skills/
+│   ├── binance-futures/        Futures API + bf.py CLI
+│   ├── crypto-quant-trader/    Quant analysis & strategy
+│   ├── trading-journal/        Performance analytics
+│   ├── github/                 GitHub CLI wrapper
+│   ├── tmux/                   tmux session control
+│   ├── skill-creator/          Skill authoring helper
+│   └── summarize/              URL/video summarizer
+└── workspace/                  Picoclaw workspace config files
+    ├── IDENTITY.md             Who Zai is
+    ├── SOUL.md                 Core values and operating principles
+    ├── USER.md                 User profile and preferences
+    ├── AGENTS.md               Behavior guide, alert thresholds, message format
+    ├── HEARTBEAT.md            30-min periodic checks (positions, funding, regime)
+    └── TOOLS.md                Available tools and API reference
+```
+
+### Deploy workspace files to picoclaw
+
+```bash
+rsync -av workspace/ ~/.picoclaw/workspace/
 ```
