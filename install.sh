@@ -1,31 +1,41 @@
 #!/usr/bin/env bash
-# install.sh — Install personal claw skills to detected destination
+# install.sh — Install skills and/or picoclaw workspace files
 #
 # Usage:
-#   ./install.sh              Interactive selection (fzf if available, else menu)
-#   ./install.sh --all        Install all skills without prompts
-#   ./install.sh --dry-run    Show what would change without applying
+#   ./install.sh                  Interactive: choose component + skills
+#   ./install.sh --all            Install everything without prompts
+#   ./install.sh --skills         Skills only (interactive menu)
+#   ./install.sh --skills --all   All skills, no prompts
+#   ./install.sh --workspace      Workspace config files only (picoclaw)
+#   ./install.sh --dry-run        Preview changes without applying
 #   SKILLS_DST=/custom/path ./install.sh
 
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILLS_SRC="$REPO_DIR/skills"
+WORKSPACE_SRC="$REPO_DIR/workspace"
 _CLAUDE_DST="$HOME/.claude/skills"
 _PICO_DST="$HOME/.picoclaw/workspace/skills"
 SKILLS_DST="${SKILLS_DST:-}"
 DRY_RUN=false
 INSTALL_ALL=false
+COMPONENT=""   # "skills" | "workspace" | "both" | "" = prompt
 
 # ── Parse args ────────────────────────────────────────────────────────────────
 for arg in "$@"; do
   case "$arg" in
-    --dry-run)   DRY_RUN=true ;;
-    --all)       INSTALL_ALL=true ;;
+    --dry-run)    DRY_RUN=true ;;
+    --all)        INSTALL_ALL=true ;;
+    --skills)     COMPONENT="skills" ;;
+    --workspace)  COMPONENT="workspace" ;;
     --help|-h)
-      echo "Usage: ./install.sh [--all] [--dry-run]"
-      echo "  --all       Install all skills without prompting"
-      echo "  --dry-run   Preview changes without applying"
+      echo "Usage: ./install.sh [OPTIONS]"
+      echo ""
+      echo "  --all         Install everything without prompting"
+      echo "  --skills      Install skills only (use with --all to skip menu)"
+      echo "  --workspace   Install workspace config files only (picoclaw)"
+      echo "  --dry-run     Preview changes without applying"
       echo ""
       echo "  SKILLS_DST=/custom/path ./install.sh"
       exit 0
@@ -51,7 +61,7 @@ if [[ -z "$SKILLS_DST" ]]; then
   [[ -d "$_PICO_DST" ]]   && { _dsts+=("$_PICO_DST");   _dlabels+=("~/.picoclaw/workspace/skills   (picoclaw)"); }
 
   if [[ ${#_dsts[@]} -eq 0 ]]; then
-    SKILLS_DST="$_CLAUDE_DST"   # default — created at install time
+    SKILLS_DST="$_CLAUDE_DST"
   elif [[ ${#_dsts[@]} -eq 1 ]]; then
     SKILLS_DST="${_dsts[0]}"
   else
@@ -68,6 +78,28 @@ if [[ -z "$SKILLS_DST" ]]; then
     unset _choice _idx
   fi
   unset _dsts _dlabels _i
+fi
+
+# Derive workspace destination (picoclaw only)
+IS_PICO=false
+WORKSPACE_DST=""
+if [[ "$SKILLS_DST" == *"/.picoclaw/"* ]]; then
+  IS_PICO=true
+  WORKSPACE_DST="${SKILLS_DST%/skills}"
+fi
+
+# Workspace only applies to picoclaw — downgrade silently if not
+if [[ "$IS_PICO" == false ]]; then
+  if [[ "$COMPONENT" == "workspace" || "$COMPONENT" == "both" ]]; then
+    echo -e "  ${YEL}Note:${NC} workspace files only apply to picoclaw. Installing skills only."
+    echo ""
+    COMPONENT="skills"
+  fi
+fi
+
+# --all with no explicit component → install everything available
+if [[ "$INSTALL_ALL" == true && -z "$COMPONENT" ]]; then
+  [[ "$IS_PICO" == true ]] && COMPONENT="both" || COMPONENT="skills"
 fi
 
 # ── Discover skills ───────────────────────────────────────────────────────────
@@ -88,29 +120,55 @@ for skill_dir in "$SKILLS_SRC"/*/; do
   fi
 done
 
-if [[ ${#skill_names[@]} -eq 0 ]]; then
+if [[ "$COMPONENT" != "workspace" && ${#skill_names[@]} -eq 0 ]]; then
   echo -e "${RED}No skills found in $SKILLS_SRC${NC}"
   exit 1
 fi
 
 # ── Header ────────────────────────────────────────────────────────────────────
 echo ""
-echo -e "${BOLD}╔══ Claw Skills Installer ══════════════════════════════════╗${NC}"
-echo -e "${BOLD}║${NC}  src: ${DIM}$SKILLS_SRC${NC}"
-echo -e "${BOLD}║${NC}  dst: ${CYAN}$SKILLS_DST${NC}"
+echo -e "${BOLD}╔══ Claw Installer ═════════════════════════════════════════╗${NC}"
+echo -e "${BOLD}║${NC}  src:       ${DIM}$REPO_DIR${NC}"
+echo -e "${BOLD}║${NC}  skills  →  ${CYAN}$SKILLS_DST${NC}"
+if [[ "$IS_PICO" == true ]]; then
+  echo -e "${BOLD}║${NC}  workspace →  ${CYAN}$WORKSPACE_DST${NC}"
+fi
 echo -e "${BOLD}╚═══════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
-# ── Interaction guard ───────────────────────────────────────────────────────────────
-if [[ "$INSTALL_ALL" == false && ! -t 0 ]]; then
+# ── Interaction guard ─────────────────────────────────────────────────────────
+# Workspace-only never needs interactive input. Everything else does.
+if [[ "$INSTALL_ALL" == false && "$COMPONENT" != "workspace" && ! -t 0 ]]; then
   echo -e "  ${YEL}No interactive terminal detected.${NC}"
-  echo -e "  ${DIM}Run with ${NC}${BOLD}--all${NC}${DIM} to install all skills without prompting.${NC}"
-  echo -e "  ${DIM}  ./install.sh --all${NC}"
+  echo -e "  ${DIM}  ./install.sh --all              Install everything${NC}"
+  echo -e "  ${DIM}  ./install.sh --skills --all     Install all skills${NC}"
+  echo -e "  ${DIM}  ./install.sh --workspace        Install workspace files${NC}"
   echo ""
   exit 1
 fi
 
-# ── Select skills ───────────────────────────────────────────────────────────────────────
+# ── Component selection ───────────────────────────────────────────────────────
+if [[ -z "$COMPONENT" ]]; then
+  if [[ "$IS_PICO" == true ]]; then
+    echo -e "  ${BOLD}What to install?${NC}"
+    echo -e "  ${CYAN}1)${NC}  Skills only        ${DIM}→ $SKILLS_DST${NC}"
+    echo -e "  ${CYAN}2)${NC}  Workspace files    ${DIM}→ $WORKSPACE_DST${NC}  ${DIM}(AGENTS, HEARTBEAT, IDENTITY…)${NC}"
+    echo -e "  ${CYAN}3)${NC}  Both"
+    echo ""
+    printf "  › [3]: "
+    read -r _comp
+    case "${_comp:-3}" in
+      1) COMPONENT="skills" ;;
+      2) COMPONENT="workspace" ;;
+      *) COMPONENT="both" ;;
+    esac
+    echo ""
+  else
+    COMPONENT="skills"
+  fi
+fi
+
+# ── Skills menu ───────────────────────────────────────────────────────────────
 selected=()
 
 _menu_select() {
@@ -145,51 +203,86 @@ _menu_select() {
   fi
 }
 
-if [[ "$INSTALL_ALL" == true ]]; then
-  selected=("${skill_names[@]}")
-else
-  _menu_select
+# ── Skills selection ──────────────────────────────────────────────────────────
+if [[ "$COMPONENT" != "workspace" ]]; then
+  if [[ "$INSTALL_ALL" == true ]]; then
+    selected=("${skill_names[@]}")
+  else
+    _menu_select
+  fi
 fi
 
-# ── Nothing selected ──────────────────────────────────────────────────────────
-if [[ ${#selected[@]} -eq 0 ]]; then
+if [[ "$COMPONENT" != "workspace" && ${#selected[@]} -eq 0 ]]; then
   echo -e "  ${YEL}No skills selected.${NC}"
   exit 0
 fi
 
-# ── Preview plan ──────────────────────────────────────────────────────────────
+# ── Plan preview ──────────────────────────────────────────────────────────────
 echo ""
 echo -e "  ${BOLD}Plan:${NC}"
 echo "  ─────────────────────────────────────────────"
 
-for s in "${selected[@]}"; do
-  dst="$SKILLS_DST/$s"
-  if [[ -d "$dst" ]]; then
-    echo -e "  ${YEL}↻${NC}  ${BOLD}$s${NC}  ${DIM}(update)${NC}"
-  else
-    echo -e "  ${GREEN}+${NC}  ${BOLD}$s${NC}  ${GREEN}(new install)${NC}"
-  fi
-done
+if [[ "$COMPONENT" != "workspace" ]]; then
+  for s in "${selected[@]}"; do
+    if [[ -d "$SKILLS_DST/$s" ]]; then
+      echo -e "  ${YEL}↻${NC}  ${BOLD}$s${NC}  ${DIM}(update)${NC}"
+    else
+      echo -e "  ${GREEN}+${NC}  ${BOLD}$s${NC}  ${GREEN}(new)${NC}"
+    fi
+  done
+fi
+
+if [[ "$COMPONENT" != "skills" && "$IS_PICO" == true ]]; then
+  echo -e "  ${CYAN}⚙${NC}  ${BOLD}workspace files${NC}  ${DIM}→ $WORKSPACE_DST${NC}"
+  for _f in "$WORKSPACE_SRC"/*.md; do
+    [[ -f "$_f" ]] || continue
+    _fname=$(basename "$_f")
+    if [[ -f "$WORKSPACE_DST/$_fname" ]]; then
+      echo -e "     ${YEL}↻${NC}  ${DIM}$_fname (update)${NC}"
+    else
+      echo -e "     ${GREEN}+${NC}  ${DIM}$_fname (new)${NC}"
+    fi
+  done
+fi
 
 echo ""
 
-# ── Dry run preview ───────────────────────────────────────────────────────────
+# ── Dry run ───────────────────────────────────────────────────────────────────
 if [[ "$DRY_RUN" == true ]]; then
   echo -e "  ${BLUE}─── Dry run (no changes applied) ───${NC}"
-  for s in "${selected[@]}"; do
-    echo -e "\n  ${BOLD}$s${NC}:"
-    rsync -av --dry-run --delete \
-      "$SKILLS_SRC/$s/" \
-      "$SKILLS_DST/$s/" \
+
+  if [[ "$COMPONENT" != "workspace" ]]; then
+    for s in "${selected[@]}"; do
+      echo -e "\n  ${BOLD}$s${NC}:"
+      rsync -av --dry-run --delete \
+        "$SKILLS_SRC/$s/" \
+        "$SKILLS_DST/$s/" \
+        2>&1 | grep -v '^sending\|^sent\|^total\|^$' | sed 's/^/    /' | head -20
+    done
+  fi
+
+  if [[ "$COMPONENT" != "skills" && "$IS_PICO" == true ]]; then
+    echo -e "\n  ${BOLD}workspace files${NC}:"
+    rsync -av --dry-run \
+      --include='*.md' --exclude='*' \
+      "$WORKSPACE_SRC/" \
+      "$WORKSPACE_DST/" \
       2>&1 | grep -v '^sending\|^sent\|^total\|^$' | sed 's/^/    /' | head -20
-  done
+  fi
+
   echo ""
   echo -e "  ${YEL}Dry run complete. Run without --dry-run to apply.${NC}"
   exit 0
 fi
 
 # ── Confirm ───────────────────────────────────────────────────────────────────
-printf "  ${BOLD}Apply ${#selected[@]} skill(s)? [y/N]: ${NC}"
+_summary=""
+[[ "$COMPONENT" != "workspace" ]] && _summary="${#selected[@]} skill(s)"
+if [[ "$COMPONENT" != "skills" && "$IS_PICO" == true ]]; then
+  [[ -n "$_summary" ]] && _summary="$_summary + workspace files" || _summary="workspace files"
+fi
+
+printf "  ${BOLD}Apply %s? [y/N]: ${NC}" "$_summary"
 read -r confirm
 echo ""
 
@@ -198,34 +291,64 @@ if [[ "${confirm,,}" != "y" ]]; then
   exit 0
 fi
 
-# ── Install ───────────────────────────────────────────────────────────────────
-mkdir -p "$SKILLS_DST"
+# ── Install skills ────────────────────────────────────────────────────────────
+skill_success=0
+skill_failed=0
 
-success=0
-failed=0
+if [[ "$COMPONENT" != "workspace" && ${#selected[@]} -gt 0 ]]; then
+  mkdir -p "$SKILLS_DST"
+  for s in "${selected[@]}"; do
+    printf "  Installing ${BOLD}%-28s${NC}" "$s"
+    if rsync -a --delete \
+        "$SKILLS_SRC/$s/" \
+        "$SKILLS_DST/$s/" \
+        2>/dev/null; then
+      echo -e "${GREEN}✓${NC}"
+      ((skill_success++))
+    else
+      echo -e "${RED}✗ failed${NC}"
+      ((skill_failed++))
+    fi
+  done
+fi
 
-for s in "${selected[@]}"; do
-  printf "  Installing ${BOLD}%-28s${NC}" "$s"
-  if rsync -a --delete \
-      "$SKILLS_SRC/$s/" \
-      "$SKILLS_DST/$s/" \
+# ── Install workspace files ───────────────────────────────────────────────────
+ws_success=0
+ws_failed=0
+
+if [[ "$COMPONENT" != "skills" && "$IS_PICO" == true ]]; then
+  mkdir -p "$WORKSPACE_DST"
+  printf "  Installing ${BOLD}%-28s${NC}" "workspace files"
+  if rsync -a \
+      --include='*.md' --exclude='*' \
+      "$WORKSPACE_SRC/" \
+      "$WORKSPACE_DST/" \
       2>/dev/null; then
     echo -e "${GREEN}✓${NC}"
-    ((success++))
+    ws_success=1
   else
     echo -e "${RED}✗ failed${NC}"
-    ((failed++))
+    ws_failed=1
   fi
-done
+fi
 
+# ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
 echo -e "  ─────────────────────────────────────────────"
 
-if [[ $failed -eq 0 ]]; then
-  echo -e "  ${GREEN}${BOLD}✓ $success skill(s) installed successfully${NC}"
+_total_fail=$(( skill_failed + ws_failed ))
+if [[ $_total_fail -eq 0 ]]; then
+  if [[ $skill_success -gt 0 && $ws_success -gt 0 ]]; then
+    echo -e "  ${GREEN}${BOLD}✓ $skill_success skill(s) + workspace files installed${NC}"
+  elif [[ $skill_success -gt 0 ]]; then
+    echo -e "  ${GREEN}${BOLD}✓ $skill_success skill(s) installed${NC}"
+  else
+    echo -e "  ${GREEN}${BOLD}✓ workspace files installed${NC}"
+  fi
 else
-  echo -e "  ${GREEN}$success installed${NC}  ${RED}$failed failed${NC}"
+  echo -e "  ${GREEN}$((skill_success + ws_success)) installed${NC}  ${RED}$_total_fail failed${NC}"
 fi
 
-echo -e "  ${DIM}→ $SKILLS_DST${NC}"
+[[ $skill_success -gt 0 ]] && echo -e "  ${DIM}skills    → $SKILLS_DST${NC}"
+[[ $ws_success -gt 0 ]]    && echo -e "  ${DIM}workspace → $WORKSPACE_DST${NC}"
 echo ""

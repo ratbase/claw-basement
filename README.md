@@ -7,17 +7,23 @@ Personal skill library for [opencode](https://opencode.ai) / Claude. Install ski
 ## Install
 
 ```bash
-# Interactive — pick which skills to install
+# Interactive: choose component (skills / workspace / both) + which skills
 ./install.sh
 
-# Install everything
+# Install everything without prompts
 ./install.sh --all
+
+# Skills only — all, no prompts
+./install.sh --skills --all
+
+# Workspace config files only (picoclaw)
+
 
 # Dry run (preview only)
 ./install.sh --dry-run
 ```
 
-Requires `rsync`. Uses `fzf` for interactive selection if available, numbered menu fallback otherwise.
+Requires `rsync`. No other dependencies.
 
 ```bash
 # Remove installed skills
