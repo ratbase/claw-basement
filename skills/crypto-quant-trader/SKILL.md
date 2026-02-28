@@ -706,6 +706,10 @@ Step 1 — Risk-based size (how many coins):
   Size = (Account × Risk%) / (Entry - Stop Loss)
   Example: $10,000 × 1% / ($90,000 - $88,500) = 0.067 BTC
 
+⚠️ Size unit is BTC (or HYPE/ETH/etc) — NOT USDT.
+   "0.067 BTC" ≠ "0.067 USDT worth of BTC".
+   Common mistake: writing size as the USDT value of the position.
+
 Step 2 — Margin required at chosen leverage:
   Margin = Size × Entry / Leverage
   Example: 0.067 × $90,000 / 10x = $603 margin (6% of account)
@@ -756,14 +760,26 @@ TP2:       $X.XX  (1:3R runner)
 
 Leverage:  Nx isolated
 Margin:    $M  (X% of account)
-Size:      Q contracts  ← Margin × Leverage / Entry
+Size:      Q SYMBOL  ← Risk$ ÷ StopDist  (e.g. 21.4 HYPE, NOT USDT)
+Notional:  $ total   ← Size × Entry
 Liq price: $X.XX  ← must be beyond SL with ≥5% buffer
 
 Liq distance: X%  (flag if < 15%)
 Daily funding cost at this size: $X
 R:R ratio: 1:X
 ```
+
+Pre-execution checks:
+☐ Size unit is base asset (HYPE/BTC/ETH), NOT USDT
+☐ Notional = Size × Entry (verify the multiplication)
+☐ Margin = Notional ÷ Leverage (verify)
+☐ Liq price calc matches formula
+☐ SL is at least 5% above liq price (LONG) or 5% below (SHORT)
+☐ Stop distance = Entry − SL (LONG) or SL − Entry (SHORT) — matches stated value
+☐ Size = Risk$ ÷ StopDist — verify the division
+
 ⚠️ Never suggest a setup where SL is closer than liq price + 5% buffer.
+
 
 **"Analyze this chart"**
 → Identify trend + regime → key S/R levels → indicators → order blocks or FVGs → near-term setup → bias (long/short/neutral)
