@@ -147,31 +147,6 @@ _menu_select() {
 
 if [[ "$INSTALL_ALL" == true ]]; then
   selected=("${skill_names[@]}")
-
-elif command -v fzf &>/dev/null && [[ -t 0 && -t 1 ]]; then
-  # fzf multi-select with SKILL.md preview
-  mapfile -t selected < <(
-    printf '%s\n' "${skill_names[@]}" | \
-    fzf \
-      --multi \
-      --prompt="  Skills › " \
-      --header="TAB=select  ENTER=confirm  CTRL-A=all  ·  src→dst" \
-      --preview="bash -c 'head -50 \"$SKILLS_SRC/{}/SKILL.md\" 2>/dev/null || echo No SKILL.md' " \
-      --preview-window="right:55%:wrap" \
-      --height="80%" \
-      --border="rounded" \
-      --color="header:italic,border:cyan,prompt:bright-cyan,pointer:bright-green" \
-      --bind="ctrl-a:select-all,enter:select+accept" \
-      --marker="✓" \
-      2>/dev/null
-  ) || true
-
-  # fzf dismissed (Escape/Ctrl-C) — fall back to numbered menu
-  if [[ ${#selected[@]} -eq 0 ]]; then
-    echo -e "  ${YEL}↩  fzf closed — using numbered menu:${NC}\n"
-    _menu_select
-  fi
-
 else
   _menu_select
 fi

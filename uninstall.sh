@@ -117,30 +117,6 @@ _menu_remove() {
 
 if [[ "$REMOVE_ALL" == true ]]; then
   selected=("${installed[@]}")
-
-elif command -v fzf &>/dev/null && [[ -t 0 && -t 1 ]]; then
-  mapfile -t selected < <(
-    printf '%s\n' "${installed[@]}" | \
-    fzf \
-      --multi \
-      --prompt="  Remove › " \
-      --header="TAB=select  ENTER=confirm  CTRL-A=all" \
-      --preview="bash -c 'ls -la \"$SKILLS_DST/{}/\" 2>/dev/null | head -30 || echo Not installed' " \
-      --preview-window="right:50%:wrap" \
-      --height="70%" \
-      --border="rounded" \
-      --color="header:italic,border:red,prompt:bright-red,pointer:bright-red" \
-      --bind="ctrl-a:select-all,enter:select+accept" \
-      --marker="✓" \
-      2>/dev/null
-  ) || true
-
-  # fzf dismissed (Escape/Ctrl-C) — fall back to numbered menu
-  if [[ ${#selected[@]} -eq 0 ]]; then
-    echo -e "  ${YEL}↩  fzf closed — using numbered menu:${NC}\n"
-    _menu_remove
-  fi
-
 else
   _menu_remove
 fi
