@@ -51,6 +51,26 @@ REGIMES:
 | CRISIS | Cash or minimal hedges | 25% max | Corr→1, liquidation cascades, funding extreme |
 | VOLATILE_BULL | Trend following with larger SL | 50-75% | High ATR, funding spike, whale accumulation |
 
+**Altcoin Trend Trade Gate (MANDATORY)**:
+
+Before entering any altcoin trend trade, BTC 4H structure must confirm the trend direction.
+Altcoins are slaves to BTC beta — a ranging BTC bleeds altcoin longs and squeezes altcoin shorts.
+
+```
+BTC 4H Structure                   | Altcoin LONG | Altcoin SHORT
+-----------------------------------|--------------|---------------
+Trending up (HH/HL, > 20/50 EMA)   | ✅ Valid      | ❌ Block
+Trending down (LH/LL, < 20/50 EMA) | ❌ Block      | ✅ Valid
+Ranging / compressed structure      | ❌ Block both | ❌ Block both
+Crisis / high vol                   | ❌ Close/reduce| ❌ Close/reduce
+```
+
+If BTC 4H is ranging or compressed:
+- No new altcoin trend entries
+- Tighten SLs on existing positions to breakeven or structure low
+- Consider partial close (50%) to bank gains / reduce exposure
+- Pivot to mean-reversion setups or stay in cash
+
 ---
 
 ### Step 2: Multi-Timeframe Analysis
@@ -674,6 +694,7 @@ Monthly review:
 ## Common Mistakes
 
 ❌ **No regime detection**: Trading trend strategies in ranging markets
+❌ **Altcoin longs in ranging BTC**: Small/mid caps bleed 2-4x when BTC consolidates — no BTC trend = no altcoin trend trade
 ❌ **Ignoring funding rate**: Entering longs at +0.1%+ funding = paying to hold crowded trade
 ❌ **Static position sizing**: Not adjusting for volatility = oversized in high-vol environments
 ❌ **Curve-fitted backtest**: No walk-forward validation = overfitted garbage
@@ -770,6 +791,8 @@ R:R ratio: 1:X
 ```
 
 Pre-execution checks:
+☐ BTC 4H trending (not ranging/compressed) — mandatory gate for altcoin trend trades
+☐ If BTC 4H ranging: tighten existing SLs to breakeven or execute partial close before new entry
 ☐ Size unit is base asset (HYPE/BTC/ETH), NOT USDT
 ☐ Notional = Size × Entry (verify the multiplication)
 ☐ Margin = Notional ÷ Leverage (verify)
