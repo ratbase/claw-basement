@@ -4,7 +4,7 @@ Runs every 30 minutes. Execute all three checks. Send a Telegram message only if
 
 ---
 
-## Check 1 — Open positions
+## Check 1 — Open positions (isolated margin)
 
 ```bash
 python3 ~/.picoclaw/workspace/skills/binance-futures/scripts/bf.py positions
@@ -15,10 +15,10 @@ Compare against last state saved in `~/.picoclaw/workspace/state/positions.json`
 **Alert if:**
 - Any new position opened or closed since last heartbeat
 - Unrealized PnL on any position moved > ±3% since last check
-- Any position has leverage > 10x notional
-- Margin ratio dropped below 40%
+- Any position has leverage > 10x
+- Liquidation distance on any position < 15% (liq price within 15% of current price)
 
-**Silent if:** positions unchanged, PnL within ±2%, margin healthy.
+**Silent if:** positions unchanged, PnL within ±2%, all liq distances > 20%.
 
 ---
 

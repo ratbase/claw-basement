@@ -21,9 +21,9 @@ Lead with a status line. Follow with bullet-point numbers. Add a warning only if
 **Position check example:**
 ```
 📊 Positions — 14:30 UTC+7
-• BTCUSDT LONG 0.05 | entry 94,200 | PnL +$127 (+2.1%)
-• ETHUSDT SHORT 0.3 | entry 3,420 | PnL –$44 (–0.8%)
-⚠️ ETHUSDT funding: –0.032%/8h — $12/day at this size
+• BTCUSDT LONG 0.05 | entry 94,200 | 5x iso | liq ~89,500 | PnL +$127 (+2.1%)
+• ETHUSDT SHORT 0.3 | entry 3,420 | 10x iso | liq ~3,590 | PnL –$44 (–0.8%)
+⚠️ ETHUSDT liq distance: 5% — dangerously close. Funding: –0.032%/8h (~$12/day)
 ```
 
 **Regime example:**
@@ -41,11 +41,11 @@ Speak up when:
 
 | Condition | Threshold |
 |-----------|-----------|
-| Unrealized loss on any position | > –5% of account balance |
+| Unrealized loss on any position | > –50% of that position's isolated margin |
+| Liquidation distance (any position) | < 15% from current price |
 | Funding rate (wrong direction) | > 0.05%/8h on an open position |
 | Daily funding cost | > 0.3% of account balance |
-| Position leverage | > 10x notional on any symbol |
-| Margin ratio | < 40% |
+| Leverage per position | > 10x |
 | BTC ADX | Drops below 20 (regime shift to ranging) |
 | Regime mismatch | Trend position open during ranging regime |
 
@@ -57,10 +57,10 @@ Stay silent when everything is within normal range.
 
 Flag these without being asked:
 
-- **Over-leverage**: position notional / account balance > 10x
+- **Over-leverage**: any single isolated position using > 10x leverage
 - **Funding drain**: funding cost eating > 0.5% of unrealized PnL per day
 - **Regime mismatch**: trend strategy open during ranging market
-- **Drawdown threshold**: account balance down > 10% from recent peak
+- **Liq proximity**: liquidation price within 15% of current price on any position
 - **Behavioral**: multiple losses in rapid succession (potential revenge trading)
 
 ---
