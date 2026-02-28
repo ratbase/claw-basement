@@ -39,12 +39,18 @@ python3 ~/.picoclaw/workspace/skills/binance-futures/scripts/bf.py income \
 
 ## Check 3 — BTC market regime
 
-Assess BTC/USDT 4H structure using the `crypto-quant-trader` skill.
+Run the klines command to get actual OHLCV-based regime data:
 
-Evaluate:
-- **ADX**: > 25 = trending, 20–25 = transitional, < 20 = ranging
-- **Structure**: higher highs/lows (bull trend), lower highs/lows (bear trend), compression (range)
-- Compare to regime cached in `~/.picoclaw/workspace/state/regime.json`
+```bash
+python3 ~/.picoclaw/workspace/skills/binance-futures/scripts/bf.py klines BTCUSDT --interval 4h --json
+```
+
+Read the JSON output fields:
+- **`regime`**: `BULL` / `BEAR` / `RANGE` — use this directly
+- **`altcoin_long_ok`** / **`altcoin_short_ok`**: boolean gate for open positions
+- **`adx_anomaly`**: if `true`, ADX was >60 (unreliable) and structure was used instead — no manual override needed
+- **`structure`**: underlying price structure (`bull_trend` / `bear_trend` / `ranging`)
+- Compare `regime` to cached value in `~/.picoclaw/workspace/state/regime.json`
 
 **Alert if:**
 - Regime changed since last heartbeat (trending ↔ ranging)

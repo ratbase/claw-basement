@@ -10,6 +10,7 @@ Usage:
   ./bf.py income [--days N] [--symbol SYM]    Income + PnL history (paginated)
   ./bf.py trades [--symbol SYM] [--days N]    User trade history
   ./bf.py rr ENTRY STOP [OPTIONS]             Risk:Reward calculator (no API)
+  ./bf.py klines [SYMBOL] [--interval 4h] [--limit N]  Regime check — ADX, EMA, structure (no API)
 
 Credentials (in priority order):
   1. BINANCE_API_KEY / BINANCE_API_SECRET env vars
@@ -104,6 +105,21 @@ def api_get(endpoint: str, params: dict, key: str, secret: str):
         sys.exit(1)
     if isinstance(data, dict) and "code" in data:
         print(f"API error {data['code']}: {data.get('msg', '?')}")
+        sys.exit(1)
+    return data
+
+
+# ── Public API (no auth) ─────────────────────────────────────────────────────
+def public_get(endpoint: str, params: dict):
+    """Public API call — no authentication required."""
+    url = f"{API_BASE}{endpoint}?{urlencode(params)}"
+    req = Request(url)
+    try:
+        with urlopen(req, timeout=15) as r:
+            data = json.load(r)
+    except HTTPError as e:
+        body = e.read().decode(errors="replace")
+        print(f"HTTP {e.code}: {body[:400]}")
         sys.exit(1)
     return data
 
@@ -513,6 +529,193 @@ def cmd_rr(
     sep()
 
 
+# ── Regime helpers ───────────────────────────────────────────────────────────
+def _wilder_smooth(values: list, period: int) -> list:
+    """Wilder's smoothing — EMA variant used by ATR and ADX."""
+    if len(values) < period:
+        return [None] * len(values)
+    result = [None] * (period - 1)
+    result.append(sum(values[:period]) / period)
+    for v in values[period:]:
+        result.append(result[-1] * (period - 1) / period + v)
+    return result
+
+
+def _calc_adx(highs: list, lows: list, closes: list, period: int = 14):
+    """
+    Compute ADX, +DI, -DI from OHLC arrays.
+    Returns (adx, plus_di, minus_di) or (None, None, None) if insufficient data.
+    """
+    n = len(closes)
+    if n < period * 2 + 5:
+        return None, None, None
+    tr_list, pdm_list, mdm_list = [], [], []
+    for i in range(1, n):
+        tr   = max(highs[i] - lows[i],
+                   abs(highs[i]  - closes[i - 1]),
+                   abs(lows[i]   - closes[i - 1]))
+        up   = highs[i] - highs[i - 1]
+        down = lows[i - 1] - lows[i]
+        pdm  = up   if up > down and up > 0   else 0.0
+        mdm  = down if down > up and down > 0 else 0.0
+        tr_list.append(tr)
+        pdm_list.append(pdm)
+        mdm_list.append(mdm)
+    atr  = _wilder_smooth(tr_list,  period)
+    spdm = _wilder_smooth(pdm_list, period)
+    smdm = _wilder_smooth(mdm_list, period)
+    dx_list = []
+    for i in range(len(atr)):
+        if atr[i] is None or atr[i] == 0:
+            dx_list.append(None)
+            continue
+        pdi   = (spdm[i] or 0) / atr[i] * 100
+        mdi   = (smdm[i] or 0) / atr[i] * 100
+        denom = pdi + mdi
+        dx    = abs(pdi - mdi) / denom * 100 if denom > 0 else 0
+        dx_list.append((dx, pdi, mdi))
+    valid = [(i, v) for i, v in enumerate(dx_list) if v is not None]
+    if len(valid) < period:
+        return None, None, None
+    adx_smooth = _wilder_smooth([v[0] for _, v in valid], period)
+    adx = next((v for v in reversed(adx_smooth) if v is not None), None)
+    _, last = valid[-1]
+    return adx, last[1], last[2]
+
+
+def _calc_ema(prices: list, period: int):
+    """EMA of price list; returns last value or None."""
+    if len(prices) < period:
+        return None
+    k   = 2.0 / (period + 1)
+    ema = sum(prices[:period]) / period
+    for p in prices[period:]:
+        ema = p * k + ema * (1 - k)
+    return ema
+
+
+def _detect_structure(highs: list, lows: list, lookback: int = 20) -> str:
+    """Classify price structure: 'bull_trend' | 'bear_trend' | 'ranging'."""
+    h = highs[-lookback:] if len(highs) >= lookback else highs
+    l = lows[-lookback:]  if len(lows)  >= lookback else lows
+    n = len(h)
+    if n < 6:
+        return "ranging"
+    swing_h, swing_l = [], []
+    for i in range(1, n - 1):
+        if h[i] >= h[i - 1] and h[i] >= h[i + 1]:
+            swing_h.append(h[i])
+        if l[i] <= l[i - 1] and l[i] <= l[i + 1]:
+            swing_l.append(l[i])
+    if len(swing_h) >= 2 and len(swing_l) >= 2:
+        hh = swing_h[-1] > swing_h[-2]
+        hl = swing_l[-1] > swing_l[-2]
+        lh = swing_h[-1] < swing_h[-2]
+        ll = swing_l[-1] < swing_l[-2]
+        if hh and hl: return "bull_trend"
+        if lh and ll: return "bear_trend"
+        return "ranging"
+    mid = n // 2
+    if max(h[mid:]) > max(h[:mid]) and min(l[mid:]) > min(l[:mid]): return "bull_trend"
+    if max(h[mid:]) < max(h[:mid]) and min(l[mid:]) < min(l[:mid]): return "bear_trend"
+    return "ranging"
+
+
+# ── klines ────────────────────────────────────────────────────────────────────
+def cmd_klines(
+    symbol:   str  = "BTCUSDT",
+    interval: str  = "4h",
+    limit:    int  = 100,
+    json_out: bool = False,
+):
+    """Fetch OHLCV + compute ADX/EMA/structure regime. No API auth needed."""
+    raw = public_get("/fapi/v1/klines", {
+        "symbol":   symbol.upper(),
+        "interval": interval,
+        "limit":    limit,
+    })
+    if not raw:
+        print("No kline data returned.")
+        sys.exit(1)
+    highs  = [float(k[2]) for k in raw]
+    lows   = [float(k[3]) for k in raw]
+    closes = [float(k[4]) for k in raw]
+    price  = closes[-1]
+
+    adx, plus_di, minus_di = _calc_adx(highs, lows, closes)
+    ema20  = _calc_ema(closes, 20)
+    ema50  = _calc_ema(closes, 50)
+    struct = _detect_structure(highs, lows, lookback=20)
+
+    # ADX > 60 is almost certainly a calculation artefact — trust structure instead
+    adx_anomaly = adx is not None and adx > 60
+    adx_ok      = adx is not None and not adx_anomaly
+
+    # Regime: structure is primary signal; ADX < 20 overrides weak structure
+    if struct == "bull_trend":   regime = "BULL"
+    elif struct == "bear_trend": regime = "BEAR"
+    else:                         regime = "RANGE"
+    if adx_ok and adx < 20:       regime = "RANGE"
+
+    range_high = max(highs[-20:])
+    range_low  = min(lows[-20:])
+    alt_long   = regime == "BULL"
+    alt_short  = regime == "BEAR"
+
+    if json_out:
+        print(json.dumps({
+            "symbol":          symbol.upper(),
+            "interval":        interval,
+            "price":           price,
+            "adx":             round(adx, 1)      if adx      else None,
+            "adx_anomaly":     adx_anomaly,
+            "plus_di":         round(plus_di, 1)  if plus_di  else None,
+            "minus_di":        round(minus_di, 1) if minus_di else None,
+            "ema20":           round(ema20, 2)    if ema20    else None,
+            "ema50":           round(ema50, 2)    if ema50    else None,
+            "structure":       struct,
+            "regime":          regime,
+            "range_high":      range_high,
+            "range_low":       range_low,
+            "altcoin_long_ok": alt_long,
+            "altcoin_short_ok":alt_short,
+        }, indent=2))
+        return
+
+    # ── Human-readable output ───────────────────────────────────────────────
+    adx_disp = f"{adx:.1f}" if adx else "n/a"
+    if adx_anomaly:
+        adx_disp += f"  {YEL}⚠ anomaly (>60) — structure used instead{RESET}"
+    elif adx_ok:
+        if adx >= 25:   adx_disp += f"  {GREEN}trending{RESET}"
+        elif adx <= 20: adx_disp += f"  {YEL}ranging{RESET}"
+        else:           adx_disp += f"  {DIM}transitional{RESET}"
+
+    struct_c = {"bull_trend": GREEN, "bear_trend": RED, "ranging": YEL}.get(struct, DIM)
+    regime_c = {"BULL": GREEN, "BEAR": RED, "RANGE": YEL}.get(regime, DIM)
+    gate_l   = f"{GREEN}✅ Valid{RESET}"  if alt_long  else f"{RED}❌ Block{RESET}"
+    gate_s   = f"{GREEN}✅ Valid{RESET}"  if alt_short else f"{RED}❌ Block{RESET}"
+    pve20    = f"{GREEN}above{RESET}" if ema20 and price > ema20 else f"{RED}below{RESET}"
+    pve50    = f"{GREEN}above{RESET}" if ema50 and price > ema50 else f"{RED}below{RESET}"
+
+    sep()
+    print(f"{BOLD}{f'REGIME CHECK — {symbol.upper()} {interval.upper()}':^72}{RESET}")
+    sep()
+    print(f"\n  Price:       {BOLD}{price:>16,.4f}{RESET}")
+    if ema20: print(f"  EMA 20:      {ema20:>16,.4f}  (price {pve20})")
+    if ema50: print(f"  EMA 50:      {ema50:>16,.4f}  (price {pve50})")
+    print(f"  ADX (14):    {adx_disp}")
+    if plus_di and minus_di:
+        bias = f"{GREEN}bullish{RESET}" if plus_di > minus_di else f"{RED}bearish{RESET}"
+        print(f"  +DI / \u2212DI:   {plus_di:.1f} / {minus_di:.1f}  ({bias} bias)")
+    print(f"\n  Range 20b:   {range_low:,.4f} \u2013 {range_high:,.4f}")
+    print(f"  Structure:   {struct_c}{struct.replace('_', ' ').upper()}{RESET}")
+    print(f"\n  {BOLD}Regime:      {regime_c}{regime}{RESET}")
+    print(f"\n  Altcoin LONG:   {gate_l}")
+    print(f"  Altcoin SHORT:  {gate_s}")
+    sep()
+
+
 # ── CLI ───────────────────────────────────────────────────────────────────────
 def main():
     ap = argparse.ArgumentParser(
@@ -527,6 +730,7 @@ commands:
   income          Income history with auto-pagination
   trades          User trade history
   rr ENTRY STOP   Risk:Reward calculator (no API key needed)
+  klines [SYM]    Regime check — ADX, EMA, structure (no API key needed)
 
 examples:
   ./bf.py account
@@ -566,6 +770,13 @@ examples:
     p.add_argument("--days",   type=int, default=30,    help="Days of history (default: 30)")
     p.add_argument("--raw",    action="store_true",     help="Raw JSON")
 
+    # klines
+    p = sub.add_parser("klines", help="Regime check — ADX, EMA, structure (no API key)")
+    p.add_argument("symbol",     nargs="?",  default="BTCUSDT", help="Symbol (default: BTCUSDT)")
+    p.add_argument("--interval",             default="4h",      help="Candle interval (default: 4h)")
+    p.add_argument("--limit",    type=int,   default=100,        help="Number of candles (default: 100)")
+    p.add_argument("--json",     action="store_true",            help="Machine-readable JSON output")
+
     # rr
     p = sub.add_parser("rr", help="Risk:Reward calculator")
     p.add_argument("entry",             type=float,             help="Entry price")
@@ -584,6 +795,9 @@ examples:
     # rr needs no API
     if args.cmd == "rr":
         cmd_rr(args.entry, args.stop, args.target, args.balance, args.risk, args.leverage)
+        return
+    if args.cmd == "klines":
+        cmd_klines(args.symbol, args.interval, args.limit, args.json)
         return
 
     key, secret = load_creds()
