@@ -84,6 +84,32 @@ Send at **exactly** the pre-session times (23:00, 07:00, 12:30 UTC). Do not skip
 
 ---
 
+## Journal Prompt
+
+After sending the pre-session brief, ask the user about new trades:
+
+```
+📝 Any new trades this session?
+
+Reply: SYMBOL DIR SIZE @ENTRY [LEVERAGE] [notes]
+
+Example: BTC LONG 0.05 @68000 5x breakout
+```
+
+When user replies, record with:
+
+```bash
+bf.py journal add BTCUSDT LONG 0.05 68000 5x breakout
+```
+
+To list current trades:
+
+```bash
+bf.py journal list --open
+```
+
+---
+
 ## Funding Rate Monitor
 
 ```bash
