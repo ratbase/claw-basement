@@ -579,17 +579,16 @@ def cmd_journal_add(
     size: float,
     entry: float,
     leverage: int = 10,
+    setup: str = "",
+    regime: str = "",
     notes: str = "",
 ):
-    """Add a trade to the journal."""
     path = _journal_path()
-    # Load existing
     if os.path.exists(path):
         with open(path) as f:
             trades = json.load(f)
     else:
         trades = []
-    # Add new
     trade = {
         "id": len(trades) + 1,
         "symbol": symbol.upper().replace("USDT", "") + "USDT",
@@ -599,20 +598,63 @@ def cmd_journal_add(
         "leverage": leverage,
         "margin": round(size * entry / leverage, 2),
         "entry_time": datetime.now(timezone.utc).isoformat(),
+        "setup_type": setup.lower() if setup else "",
+        "regime_at_entry": regime.upper() if regime else "",
         "exit_time": None,
         "exit_price": None,
+        "exit_reason": "",
         "pnl": None,
         "notes": notes or "",
         "status": "OPEN",
     }
     trades.append(trade)
-    # Save
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
         json.dump(trades, f, indent=2)
     print(
         f"✅ Added: {trade['symbol']} {trade['direction']} {size} @ {entry} ({leverage}x)"
     )
+    if trade["setup_type"]:
+        print(
+            f"   Setup: {trade['setup_type']} | Regime: {trade['regime_at_entry'] or 'n/a'}"
+        )
+
+
+def cmd_journal_close(trade_id: int, exit_price: float, reason: str):
+    path = _journal_path()
+    if not os.path.exists(path):
+        print("  No trades in journal.")
+        return
+    with open(path) as f:
+        trades = json.load(f)
+    found = None
+    for t in trades:
+        if t["id"] == trade_id:
+            found = t
+            break
+    if not found:
+        print(f"  Trade #{trade_id} not found.")
+        return
+    if found["status"] == "CLOSED":
+        print(f"  Trade #{trade_id} already closed.")
+        return
+    found["exit_price"] = exit_price
+    found["exit_time"] = datetime.now(timezone.utc).isoformat()
+    found["exit_reason"] = reason.lower() if reason else ""
+    size = found["size"]
+    entry = found["entry"]
+    lev = found["leverage"]
+    if found["direction"] == "LONG":
+        pnl = (exit_price - entry) * size * lev
+    else:
+        pnl = (entry - exit_price) * size * lev
+    found["pnl"] = round(pnl, 2)
+    found["status"] = "CLOSED"
+    with open(path, "w") as f:
+        json.dump(trades, f, indent=2)
+    pnl_c = GREEN if pnl > 0 else RED
+    print(f"✅ Closed: {found['symbol']} {found['direction']} @ {exit_price}")
+    print(f"   P&L: {pnl_c}{pnl:+,.2f} USDT{RESET} | Reason: {found['exit_reason']}")
 
 
 def cmd_journal_list(show_open: bool = False, days: int = 30):
@@ -647,11 +689,19 @@ def cmd_journal_list(show_open: bool = False, days: int = 30):
         if t["pnl"] is not None:
             pnl_c = GREEN if t["pnl"] > 0 else RED
             pnl_str = f" {pnl_c}{t['pnl']:+,.2f} USDT{RESET}"
+        setup_str = f" | {t['setup_type']}" if t.get("setup_type") else ""
+        regime_str = (
+            f" | {t.get('regime_at_entry')}" if t.get("regime_at_entry") else ""
+        )
         print(
             f"  {t['id']:>2}. {t['symbol']:<12} {dir_c}{t['direction']}{RESET} "
             f"{t['size']} @ {t['entry']} ({t['leverage']}x){pnl_str}"
         )
-        print(f"      {t['entry_time'][:10]} | {t['notes'][:40]}")
+        print(f"      {t['entry_time'][:10]}{setup_str}{regime_str}")
+        if t.get("exit_reason"):
+            print(f"      Exit: {t['exit_reason']} @ {t.get('exit_price', 'n/a')}")
+        if t.get("notes"):
+            print(f"      {t['notes'][:50]}")
     sep()
 
 
@@ -894,7 +944,8 @@ examples:
   ./bf.py rr 50000 48000
   ./bf.py rr 50000 48000 --balance 1000 --risk 2 --leverage 10
   ./bf.py rr 0.50 0.46 --target 2.5
-  ./bf.py journal add BTCUSDT LONG 0.05 68000 5x breakout above 67k
+  ./bf.py journal add BTCUSDT LONG 0.05 68000 --setup breakout --regime BULL
+  ./bf.py journal close 1 72000 target
   ./bf.py journal list --open
         """,
     )
@@ -959,7 +1010,16 @@ examples:
     )
     a.add_argument("entry", type=float, help="Entry price")
     a.add_argument("--leverage", type=int, default=10, help="Leverage (default: 10)")
+    a.add_argument(
+        "--setup",
+        help="Setup type: breakout/fvg/mean_rev/support_resistance/liquidity_sweep",
+    )
+    a.add_argument("--regime", help="Regime at entry: BULL/BEAR/RANGE")
     a.add_argument("notes", nargs="*", default=[], help="Trade notes")
+    c = subp.add_parser("close", help="Close a trade")
+    c.add_argument("trade_id", type=int, help="Trade ID to close")
+    c.add_argument("exit_price", type=float, help="Exit price")
+    c.add_argument("reason", help="Exit reason: stop/target/manual")
     l = subp.add_parser("list", help="List trades")
     l.add_argument("--open", action="store_true", help="Show only open positions")
     l.add_argument("--days", type=int, default=30, help="Days to show (default: 30)")
@@ -983,8 +1043,17 @@ examples:
         if args.jcmd == "add":
             notes = " ".join(args.notes) if args.notes else ""
             cmd_journal_add(
-                args.symbol, args.direction, args.size, args.entry, args.leverage, notes
+                args.symbol,
+                args.direction,
+                args.size,
+                args.entry,
+                args.leverage,
+                args.setup,
+                args.regime,
+                notes,
             )
+        elif args.jcmd == "close":
+            cmd_journal_close(args.trade_id, args.exit_price, args.reason)
         elif args.jcmd == "list":
             cmd_journal_list(args.open, args.days)
         else:
