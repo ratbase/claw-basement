@@ -1,28 +1,72 @@
 # Heartbeat
 
-Runs every 30 minutes. Execute all three checks. Send a Telegram message only if at least one alert condition is met. If nothing is actionable, stay silent.
+Runs every 30 minutes. Send a Telegram message only when:
+1. Pre-session analysis is due (1 hour before EU/US/ASIA open), OR
+2. An alert condition is met
+
+Otherwise stay silent.
 
 ---
 
-## Check 1 — Open positions (isolated margin)
+## Pre-Session Market Analysis
+
+**Runs 1 hour before each major trading session:**
+
+| Session | Opens UTC | Pre-Session Alert UTC |
+|---------|-----------|----------------------|
+| ASIA    | 00:00     | 23:00 (prior day)    |
+| EU      | 08:00     | 07:00                |
+| US      | 13:30     | 12:30                |
+
+### Execution
 
 ```bash
-python3 ~/.picoclaw/workspace/skills/binance-futures/scripts/bf.py positions
+# BTC 4H regime
+python3 ~/.picoclaw/workspace/skills/binance-futures/scripts/bf.py klines BTCUSDT --interval 4h --json
+
+# BTC 1H structure (intraday)
+python3 ~/.picoclaw/workspace/skills/binance-futures/scripts/bf.py klines BTCUSDT --interval 1h --json
+
+# ETH 4H (altcoin proxy)
+python3 ~/.picoclaw/workspace/skills/binance-futures/scripts/bf.py klines ETHUSDT --interval 4h --json
 ```
 
-Compare against last state saved in `~/.picoclaw/workspace/state/positions.json`.
+### Analysis Output
 
-**Alert if:**
-- Any new position opened or closed since last heartbeat
-- Unrealized PnL on any position moved > ±3% since last check
-- Any position has leverage > 10x
-- Liquidation distance on any position < 15% (liq price within 15% of current price)
+Compile and send a pre-session brief:
 
-**Silent if:** positions unchanged, PnL within ±2%, all liq distances > 20%.
+```
+📊 [SESSION] Market Brief — HH:MM UTC+7
+
+BTC 4H:
+• Regime: [BULL/BEAR/RANGE]
+• Structure: [bull_trend/bear_trend/ranging]
+• ADX: XX.X
+• Price: $XX,XXX
+• Range: $XX,XXX – $XX,XXX
+
+ETH 4H:
+• Regime: [BULL/BEAR/RANGE]
+• Price: $X,XXX
+
+Alt Setup Gate:
+• LONG: ✅ Valid / ❌ Block
+• SHORT: ✅ Valid / ❌ Block
+
+Key Levels:
+• BTC Support: $XX,XXX
+• BTC Resistance: $XX,XXX
+
+Bias: [BULLISH/BEARISH/NEUTRAL]
+```
+
+### When to Send
+
+Send at **exactly** the pre-session times (07:00, 12:30, 23:00 UTC). If no alert triggered in the last cycle, still send the pre-session brief as scheduled.
 
 ---
 
-## Check 2 — Funding rate costs
+## Funding Rate Monitor
 
 ```bash
 python3 ~/.picoclaw/workspace/skills/binance-futures/scripts/bf.py income \
@@ -30,63 +74,18 @@ python3 ~/.picoclaw/workspace/skills/binance-futures/scripts/bf.py income \
 ```
 
 **Alert if:**
-- Any open position is paying > 0.05%/8h in funding (wrong direction)
+- Any open position is paying > 0.05%/8h (wrong direction)
 - Total funding paid today > 0.3% of account balance
 
-**Silent if:** funding costs are within normal range or positions are receiving funding.
-
----
-
-## Check 3 — BTC market regime
-
-Run the klines command to get actual OHLCV-based regime data:
-
-```bash
-python3 ~/.picoclaw/workspace/skills/binance-futures/scripts/bf.py klines BTCUSDT --interval 4h --json
-```
-
-Read the JSON output fields:
-- **`regime`**: `BULL` / `BEAR` / `RANGE` — use this directly
-- **`altcoin_long_ok`** / **`altcoin_short_ok`**: boolean gate for open positions
-- **`adx_anomaly`**: if `true`, ADX was >60 (unreliable) and structure was used instead — no manual override needed
-- **`structure`**: underlying price structure (`bull_trend` / `bear_trend` / `ranging`)
-- Compare `regime` to cached value in `~/.picoclaw/workspace/state/regime.json`
-
-**Alert if:**
-- Regime changed since last heartbeat (trending ↔ ranging)
-- Regime is ranging AND a directional trend position is open (mismatch warning)
-
-**Silent if:** regime unchanged and no mismatch.
-
----
-
-## Heartbeat message format
-
-Only send if at least one alert triggered:
-
-```
-🔁 [HH:MM UTC+7]
-[triggered check results — no boilerplate]
-```
-
-Example (two alerts):
-```
-🔁 14:30 UTC+7
-• ETHUSDT SHORT: funding –0.041%/8h → ~$15/day cost
-• BTC regime: trending → ranging (ADX 28→19)
-  ↳ Check if ETHUSDT SHORT still valid in ranging market
-```
-
-If no alerts: **no message sent**.
+**Silent if:** funding costs within normal range or receiving funding.
 
 ---
 
 ## State files
 
-Update these after every heartbeat:
+Update after every heartbeat:
 
 | File | Contents |
 |------|----------|
-| `state/positions.json` | Last known positions snapshot |
-| `state/regime.json` | Last known BTC regime + ADX value |
-| `state/last_heartbeat.json` | Timestamp + summary of last run |
+| `state/last_session.json` | Last sent session type (EU/US/ASIA) + timestamp |
+| `state/last_heartbeat.json` | Timestamp + summary |
